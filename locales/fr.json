@@ -1,0 +1,7 @@
+{
+  "start_msg": "Salut ! Je suis REN-MDX, ton bot optimisé.",
+  "cmd_error": "❌ Une erreur est survenue lors de l'exécution de cette commande.",
+  "admin_only": "⚠️ Cette commande est réservée aux admins du groupe.",
+  "owner_only": "🔒 Commande réservée au propriétaire du bot.",
+  "group_only": "👥 Cette commande fonctionne uniquement dans les groupes."
+}
