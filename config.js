@@ -1,22 +1,24 @@
-// ⚙️ REN-MDX - CONFIGURATION CENTRALE
-// Facile à modifier pour tous les développeurs
+// ⚙️ REN-MDX - CONFIGURATION (Via .env)
+require('dotenv').config();
 
 module.exports = {
   // --- IDENTITÉ ---
-  botName: 'REN-MDX',
-  ownerName: 'Admin',
-  ownerNumber: ['237650471093'], // Ton numéro
-  phoneNumber: '237650471093', // Numéro du BOT pour le Pairing Code
-  prefix: '.', // Préfixe par défaut
+  botName: process.env.BOT_NAME || 'REN-MDX',
+  ownerName: process.env.OWNER_NAME || 'Admin',
+  ownerNumber: (process.env.OWNER_NUMBER || '237650471093').split(','), // Support multi-owner via virgule
+  phoneNumber: process.env.OWNER_NUMBER || '237650471093', // Pour pairing code
+  prefix: process.env.PREFIX || '.',
 
   // --- PARAMÈTRES INTERNES ---
-  sessionName: 'session',
-  defaultLang: 'fr', 
-  autoRead: false, 
+  sessionName: process.env.SESSION_NAME || 'session',
+  defaultLang: process.env.DEFAULT_LANG || 'fr',
+  autoRead: process.env.AUTO_READ === 'true',
   
   // --- NEWSLETTER & LINKS ---
-  newsletterJid: '120363161513685998@newsletter',
-  logoUrl: 'https://i.postimg.cc/8cKZBMZw/lv-0-20251105211949.jpg',
+  newsletterJid: process.env.NEWSLETTER_JID || '120363420601379038@newsletter',
+  logoUrl: process.env.LOGO_URL || 'https://i.postimg.cc/8cKZBMZw/lv-0-20251105211949.jpg',
+
+  // --- OPTIMISATIONS ---
   syncFullHistory: false, 
   keepAliveInterval: 30000, 
 
