@@ -1,9 +1,11 @@
-// 🚀 NEXUS - HANDLER (OPTIMISÉ v2)
+// 🚀 NEXUS - HANDLER (OPTIMISÉ v5 - DYNAMIQUE & MINIMALISTE)
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
-const { t } = require('../lib/language');
 const chalk = require('chalk');
+const { isAdmin, isOwner: checkIsOwner, normalizeJid } = require('../lib/authHelper');
+const { buildMessageOptions } = require('../lib/utils');
+const { getSettings } = require('../lib/database');
 
 // Chargement des plugins
 const plugins = {};
@@ -13,15 +15,29 @@ function loadPlugins() {
     console.log(chalk.cyan('📥 Chargement des plugins...'));
     const pluginDir = path.join(__dirname, '../plugins');
     
-    fs.readdirSync(pluginDir).forEach(category => {
+    if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir);
+
+    const categories = fs.readdirSync(pluginDir);
+    categories.forEach(category => {
         const catPath = path.join(pluginDir, category);
         if (fs.lstatSync(catPath).isDirectory()) {
             fs.readdirSync(catPath).forEach(file => {
                 if (file.endsWith('.js')) {
-                    const plugin = require(path.join(catPath, file));
-                    plugins[plugin.name] = plugin;
-                    if (plugin.aliases) {
-                        plugin.aliases.forEach(alias => aliases[alias] = plugin.name);
+                    try {
+                        const pluginModule = require(path.join(catPath, file));
+                        // Supporte export unique OU tableau de commandes
+                        const commands = Array.isArray(pluginModule) ? pluginModule : [pluginModule];
+
+                        commands.forEach(plugin => {
+                            if (plugin && plugin.name) {
+                                plugins[plugin.name] = plugin;
+                                if (plugin.aliases) {
+                                    plugin.aliases.forEach(alias => aliases[alias] = plugin.name);
+                                }
+                            }
+                        });
+                    } catch (err) {
+                        console.error(chalk.red(`Erreur chargement ${file}:`), err);
                     }
                 }
             });
@@ -36,64 +52,65 @@ async function messageHandler(sock, m) {
         const message = m.messages[0];
         if (!message) return;
 
-        // ⚠️ IMPORTANT : On ne return PAS si fromMe, sinon le propriétaire ne peut pas utiliser son bot !
-        // Mais on ignore les messages qui ne sont pas du texte pour éviter les boucles
         if (message.key.fromMe && !message.message?.conversation && !message.message?.extendedTextMessage) return;
 
         const chatId = message.key.remoteJid;
         const isGroup = chatId.endsWith('@g.us');
         
-        // Détermination propre de l'expéditeur
         let sender = isGroup ? (message.key.participant || message.participant) : chatId;
         if (message.key.fromMe) {
             sender = sock.user.id.split(':')[0] + '@s.whatsapp.net';
         }
 
-        const body = message.message?.conversation || message.message?.extendedTextMessage?.text || "";
-        const prefix = config.prefix;
+        const body = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || "";
+        
+        // --- PRÉFIXE DYNAMIQUE ---
+        const settings = getSettings();
+        const prefix = settings.prefix || config.prefix;
 
-        // Si ce n'est pas une commande, on s'arrête là (sauf si on ajoute de l'IA plus tard)
         if (!body.startsWith(prefix)) return;
 
-        // Analyse de la commande
         const args = body.slice(prefix.length).trim().split(/ +/);
         const commandName = args.shift().toLowerCase();
         const pluginName = plugins[commandName] ? commandName : aliases[commandName];
         
         if (pluginName) {
             const plugin = plugins[pluginName];
-            const senderNum = sender.split('@')[0].split(':')[0]; // Numéro propre sans suffixe
+            const senderNum = normalizeJid(sender);
+            const isOwner = checkIsOwner(sock, message);
+
+            // --- GESTION DU MODE PUBLIC/PRIVÉ ---
+            if (settings.mode === 'private' && !isOwner) {
+                return; // Ignorer silencieusement
+            }
 
             // --- VÉRIFICATIONS ---
 
-            // 1. Owner Only
-            // Le propriétaire est soit dans la config, soit c'est le bot lui-même (fromMe)
-            const isOwner = config.ownerNumber.includes(senderNum) || message.key.fromMe;
+            // 1. Owner Only (SILENT FAIL)
             if (plugin.ownerOnly && !isOwner) {
-                return sock.sendMessage(chatId, { text: t('owner_only') }, { quoted: message });
+                return; // On ne fait RIEN. On ignore.
             }
 
             // 2. Group Only
             if (plugin.groupOnly && !isGroup) {
-                return sock.sendMessage(chatId, { text: t('group_only') }, { quoted: message });
+                return sock.sendMessage(chatId, { text: "> *ERREUR* : group only" }, { quoted: message });
             }
 
-            // 3. Admin Only (Optimisé : requête faite UNIQUEMENT si nécessaire)
+            // 3. Admin Only
             if (plugin.adminOnly && isGroup) {
-                // On ne fetch les métadonnées que maintenant !
-                const groupMetadata = await sock.groupMetadata(chatId);
-                const participants = groupMetadata.participants;
-                // On cherche si l'expéditeur est admin ou superadmin
-                const isAdmin = participants.some(p => p.id.includes(senderNum) && (p.admin === 'admin' || p.admin === 'superadmin'));
-                
-                if (!isAdmin && !isOwner) {
-                    return sock.sendMessage(chatId, { text: t('admin_only') }, { quoted: message });
+                const userIsAdmin = await isAdmin(sock, chatId, sender);
+                if (!userIsAdmin && !isOwner) {
+                    return sock.sendMessage(chatId, { text: "> *ERREUR* : admin only" }, { quoted: message });
                 }
             }
 
+            // --- OPTIONS DE MESSAGE ---
+            // On passe 'settings' à buildMessageOptions pour avoir les noms dynamiques
+            const msgOptions = buildMessageOptions(plugin, settings);
+
             // 🚀 EXÉCUTION
             console.log(chalk.yellow(`[EXEC] ${pluginName} par ${senderNum}`));
-            await plugin.execute(sock, message, args);
+            await plugin.execute(sock, message, args, msgOptions);
         }
 
     } catch (e) {

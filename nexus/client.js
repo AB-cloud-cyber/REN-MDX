@@ -14,6 +14,8 @@ const config = require('../config');
 
 // Gestionnaire d'événements (Handler)
 const { messageHandler } = require('./handler');
+const { monitorMessage, monitorGroupUpdate } = require('./monitor'); 
+const { getSettings } = require('../lib/database'); // Import settings
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(config.sessionName);
@@ -71,11 +73,53 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // 📩 GESTION DES MESSAGES (Handler)
+    // 📩 GESTION DES MESSAGES (Handler + Monitor)
     sock.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        if (!msg) return;
+
+        // --- GESTION DES STATUTS ---
+        if (msg.key.remoteJid === 'status@broadcast' && !msg.key.fromMe) {
+            const settings = getSettings();
+            
+            // Auto View
+            if (settings.autostatusview) {
+                await sock.readMessages([msg.key]);
+                console.log(chalk.green(`[STATUS] Vu : ${msg.key.participant}`));
+            }
+
+            // Auto React (💚)
+            if (settings.autostatusreact) {
+                setTimeout(async () => {
+                    await sock.sendMessage('status@broadcast', { 
+                        react: { text: '💚', key: msg.key } 
+                    }, { statusJidList: [msg.key.participant] });
+                }, 2000); // Petit délai pour éviter les erreurs de sync
+            }
+            return; // Stop pour les statuts
+        }
+
         if (m.type === 'notify') {
+           // --- GESTION PRÉSENCE (FAKE) ---
+           const settings = getSettings();
+           const chatId = msg.key.remoteJid;
+
+           if (settings.autotyping) {
+               await sock.sendPresenceUpdate('composing', chatId);
+               setTimeout(() => sock.sendPresenceUpdate('paused', chatId), 5000);
+           } else if (settings.autorecord) {
+               await sock.sendPresenceUpdate('recording', chatId);
+               setTimeout(() => sock.sendPresenceUpdate('paused', chatId), 5000);
+           }
+
+           await monitorMessage(sock, m);
            await messageHandler(sock, m);
         }
+    });
+
+    // 👥 GESTION DES GROUPES (Promote/Demote/Welcome)
+    sock.ev.on('group-participants.update', async (update) => {
+        await monitorGroupUpdate(sock, update);
     });
 
     return sock;

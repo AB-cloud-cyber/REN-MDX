@@ -1,24 +1,29 @@
-// 📦 Plugin: PING
-// Exemple de structure complète
-
 module.exports = {
   name: 'ping',
-  aliases: ['p', 'speed'],
+  aliases: ['p'],
   category: 'misc',
-  description: 'Affiche la latence du bot',
+  description: 'Vérifie la latence',
   usage: '.ping',
   
   // FLAGS
   groupOnly: false,
   ownerOnly: false,
   adminOnly: false,
-  botAdminNeeded: false,
 
-  execute: async (client, message, args) => {
+  execute: async (client, message, args, msgOptions) => {
     const start = Date.now();
-    await client.sendMessage(message.key.remoteJid, { text: '🏓 Pong !' });
+    
+    // 1. Réaction
+    await client.sendMessage(message.key.remoteJid, { 
+        react: { text: "♟", key: message.key } 
+    });
+
     const end = Date.now();
-    // Exemple d'edit (si supporté par la version de baileys) ou de reply
-    await client.sendMessage(message.key.remoteJid, { text: `⏱️ Latence : ${end - start}ms` }, { quoted: message });
+    const latency = end - start;
+
+    // 2. Message unique (avec msgOptions pour supporter les flags si ajoutés plus tard)
+    await client.sendMessage(message.key.remoteJid, { 
+        text: `📺 *Ping !* ${latency}ms` 
+    }, { quoted: message, ...msgOptions });
   }
 };

@@ -14,7 +14,9 @@ module.exports = {
   defaultLang: 'fr', 
   autoRead: false, 
   
-  // --- OPTIMISATIONS ---
+  // --- NEWSLETTER & LINKS ---
+  newsletterJid: '120363161513685998@newsletter',
+  logoUrl: 'https://i.postimg.cc/8cKZBMZw/lv-0-20251105211949.jpg',
   syncFullHistory: false, 
   keepAliveInterval: 30000, 
 
